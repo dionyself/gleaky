@@ -1,0 +1,7 @@
+.git
+.cache
+venv
+sources
+**/*.pyc
+**/migrations/*
+__pycache__

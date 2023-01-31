@@ -1,0 +1,179 @@
+# Confidential & Proprietary.  Copyright 2019-2020 DigiWorth, Inc. All rights reserved.
+# Gleaky ONE: gleaky-stack
+
+version: "3"
+
+volumes:
+  global-gleaky-normal:
+  gleaky-index-01-data:
+  gleaky-index-02-data:
+  certs:
+
+services:
+
+  gleaky-db:
+    image: ${GLEAKY_DB_IMAGE}
+    environment:
+      POSTGRES_DB: ${GLEAKY_DB_NAME}
+      POSTGRES_USER: ${GLEAKY_DB_USER}
+      POSTGRES_PASSWORD: ${GLEAKY_DB_PWD}
+      PGDATA: ${PGDATA}
+    ports:
+      - "${GLEAKY_DB_PORT}:5432"
+    volumes:
+      -  "${GLEAKY_DB_PGDATA_VOLUME}:${PGDATA}" 
+  
+
+
+
+
+
+  gleaky-index-01:
+    container_name: gleaky-index-01
+    image: ${GLEAKY_INDEX_IMAGE}
+    environment:
+      - node.name=gleaky-index-01
+      - discovery.seed_hosts=gleaky-index-01,gleaky-index-02
+      - cluster.initial_master_nodes=${GLEAKY_INDEX_DISCOVERY_SEEDS_HOSTS}
+      - ELASTIC_PASSWORD=$ELASTIC_PASSWORD 
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - xpack.license.self_generated.type=trial 
+      - xpack.security.enabled=true
+      - xpack.security.http.ssl.enabled=true
+      - xpack.security.http.ssl.key=$CERTS_DIR/gleaky-index-01/gleaky-index-01.key
+      - xpack.security.http.ssl.certificate_authorities=$CERTS_DIR/ca/ca.crt
+      - xpack.security.http.ssl.certificate=$CERTS_DIR/gleaky-index-01/gleaky-index-01.crt
+      - xpack.security.transport.ssl.enabled=true
+      - xpack.security.transport.ssl.verification_mode=certificate 
+      - xpack.security.transport.ssl.certificate_authorities=$CERTS_DIR/ca/ca.crt
+      - xpack.security.transport.ssl.certificate=$CERTS_DIR/gleaky-index-01/gleaky-index-01.crt
+      - xpack.security.transport.ssl.key=$CERTS_DIR/gleaky-index-01/gleaky-index-01.key
+    volumes:
+      - "gleaky-index-01-data:/usr/share/elasticsearch/data"
+      - "certs:${CERTS_DIR}"
+    ports:
+      - "${GLEAKY_INDEX_REST_PORT}:9200"
+      - "${GLEAKY_INDEX_NODE_PORT}:9300"
+    healthcheck:
+      test: curl --cacert $CERTS_DIR/ca/ca.crt -s https://localhost:9200 >/dev/null; if [[ $$? == 52 ]]; then echo 0; else echo 1; fi
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  gleaky-index-02:
+    container_name: gleaky-index-02
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.6.2
+    environment:
+      - node.name=gleaky-index-02
+      - discovery.seed_hosts=gleaky-index-01,gleaky-index-02
+      - cluster.initial_master_nodes=gleaky-index-01,gleaky-index-02
+      - ELASTIC_PASSWORD=$ELASTIC_PASSWORD
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - xpack.license.self_generated.type=trial
+      - xpack.security.enabled=true
+      - xpack.security.http.ssl.enabled=true
+      - xpack.security.http.ssl.key=$CERTS_DIR/gleaky-index-02/gleaky-index-02.key
+      - xpack.security.http.ssl.certificate_authorities=$CERTS_DIR/ca/ca.crt
+      - xpack.security.http.ssl.certificate=$CERTS_DIR/gleaky-index-02/gleaky-index-02.crt
+      - xpack.security.transport.ssl.enabled=true
+      - xpack.security.transport.ssl.verification_mode=certificate 
+      - xpack.security.transport.ssl.certificate_authorities=$CERTS_DIR/ca/ca.crt
+      - xpack.security.transport.ssl.certificate=$CERTS_DIR/gleaky-index-02/gleaky-index-02.crt
+      - xpack.security.transport.ssl.key=$CERTS_DIR/gleaky-index-02/gleaky-index-02.key
+    volumes:
+      - gleaky-index-02-data:/usr/share/elasticsearch/data
+      - certs:$CERTS_DIR
+
+  wait_until_ready:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.6.2
+    command: /usr/bin/true
+    depends_on: {"gleaky-index-01": {"condition": "service_healthy"}}
+
+
+
+
+
+
+
+
+
+
+
+
+  gleaky-broker:
+    image: ${GLEAKY_BROKER_IMAGE}
+    ports:
+      - "${GLEAKY_BROKER_PORT}:6379"
+
+  gleaky-reporter:
+    image: ${GLEAKY_REPORTER_IMAGE}
+    command: sh -c "/wait && /srv/gleaky-reporter-app/run.sh"
+    environment:
+      GLEAKY_REPORTER_HOST: ${GLEAKY_REPORTER_HOST}
+      GLEAKY_REPORTER_PORT: ${GLEAKY_REPORTER_PORT}
+      GLEAKY_REPORTER_DOMAIN: ${GLEAKY_REPORTER_DOMAIN}
+      GLEAKY_REPORTER_DOMAINS_EXTRA: ${GLEAKY_REPORTER_DOMAINS_EXTRA}
+      GLEAKY_DB_HOST: ${GLEAKY_DB_HOST}
+      GLEAKY_DB_NAME: ${GLEAKY_DB_NAME}
+      GLEAKY_DB_PORT: ${GLEAKY_DB_PORT}
+      GLEAKY_DB_USER: ${GLEAKY_DB_USER}
+      GLEAKY_DB_PWD: ${GLEAKY_DB_PWD}
+      GLEAKY_REPORTER_DEBUG: ${GLEAKY_REPORTER_DEBUG}
+      GLEAKY_REPORTER_SYSTEM_EMAIL: ${GLEAKY_SYSTEM_EMAIL:="root@gleaky.com"}
+      GLEAKY_REPORTER_ADMIN_EMAIL: ${GLEAKY_ADMIN_EMAIL:="admin@gleaky.com"}
+      GLEAKY_REPORTER_ADMIN_PASSWORD: ${GLEAKY_ADMIN_PASSWORD:="password"}
+      GLEAKY_REPORTER_DEFAULT_FROM_EMAIL: ${GLEAKY_DEFAULT_FROM_EMAIL:="root@gleaky.com"}
+      GLEAKY_REPORTER_STATIC_ROOT: ${GLEAKY_STATIC_ROOT:="/srv/gleaky-router-app/static/"}
+      GLEAKY_REPORTER_MEDIA_ROOT: ${GLEAKY_MEDIA_ROOT:="/srv/gleaky-router-app/media/"}
+      GLEAKY_REPORTER_BROKER_URL: ${GLEAKY_REPORTER_BROKER_URL:="redis://localhost:6379"}
+      GLEAKY_REPORTER_INDEX_URL: ${GLEAKY_REPORTER_INDEX_URL:="http://127.0.0.1:9200/"}
+      - WAIT_HOSTS=${GLEAKY_DB_HOST}:${GLEAKY_DB_PORT}, gleaky-broker:${GLEAKY_BROKER_PORT}, gleaky-index-01:${GLEAKY_INDEX_REST_PORT}, gleaky-index-01:${GLEAKY_INDEX_NODE_PORT}
+      - WAIT_HOSTS_TIMEOUT=300
+      - WAIT_SLEEP_INTERVAL=30
+      - WAIT_HOST_CONNECT_TIMEOUT=30
+    build:
+      context: ./gleaky_reporter/
+      dockerfile: ./gleaky_reporter/Dockerfile
+      args:
+        - GLEAKY_REPORTER_ENV=${GLEAKY_REPORTER_ENV}
+        - GLEAKY_REPORTER_INTERNAL_PORT=${GLEAKY_REPORTER_INTERNAL_PORT}
+        - GLEAKY_REPORTER_HOST=${GLEAKY_REPORTER_HOST}
+    ports:
+      - "${GLEAKY_REPORTER_INTERNAL_PORT}:${GLEAKY_REPORTER_PORT}"
+    volumes:
+      - "./gleaky_reporter/:/app"
+
+  gleaky-middleware:
+    image: ${GLEAKY_MIDDLEWARE_IMAGE}
+    environment:
+      GLEAKY_REPORTER_WS_URI: ${GLEAKY_REPORTER_WS_URI}
+      GLEAKY_REPORTER_USER: ${GLEAKY_REPORTER_USER}
+      GLEAKY_REPORTER_PWD: ${GLEAKY_REPORTER_PWD}
+      GLEAKY_MIDDLEWARE_HOST: ${GLEAKY_MIDDLEWARE_HOST}
+      GLEAKY_MIDDLEWARE_WS_USER: ${GLEAKY_MIDDLEWARE_WS_USER}
+      GLEAKY_MIDDLEWARE_WS_PASSWORD: ${GLEAKY_MIDDLEWARE_WS_PASSWORD}
+
+
+  gleaky-scanner:
+    image: ${GLEAKY_SCANNER_IMAGE}
+    environment:
+      GLEAKY_MIDDLEWARE_URI: ${GLEAKY_MIDDLEWARE_URI}
+      GLEAKY_MIDDLEWARE_WS_USER: ${GLEAKY_MIDDLEWARE_WS_USER}
+      GLEAKY_MIDDLEWARE_WS_PASSWORD: ${GLEAKY_MIDDLEWARE_WS_PWD}
+
+  gleaky-proxy:
+    image: ${GLEAKY_PROXY_IMAGE}
+    environment:
+      GLEAKY_REPORTER_HOST: ${GLEAKY_REPORTER_HOST}
+      GLEAKY_REPORTER_PORT: ${GLEAKY_REPORTER_PORT}
+      GLEAKY_MIDDLEWARE_HOST: ${GLEAKY_MIDDLEWARE_HOST}
+      GLEAKY_MIDDLEWARE_PORT: ${GLEAKY_MIDDLEWARE_PORT}
+    ports:
+      - ${GLEAKY_PROXY_REPORTER_SSL_EXTERNAL_PORT}:443/tcp
+      - ${GLEAKY_PROXY_REPORTER_HTTP_EXTERNAL_PORT}:80/tcp
+      - ${GLEAKY_PROXY_MIDDLEWARE_SSL_EXTERNAL_PORT}:444/tcp
+      - ${GLEAKY_PROXY_MIDDLEWARE_HTTP_EXTERNAL_PORT}:81/tcp
+    volumes: 
+      - /data/gleaky_proxy/certs:/etc/nginx/certs:ro
+      - /data/gleaky_proxy/nginx.conf.tpl:/tmp/nginx.conf.tpl:ro
+    command: /bin/bash -c "envsubst < /tmp/nginx.conf.tpl > /etc/nginx/nginx.conf && exec nginx -g 'daemon off;'"

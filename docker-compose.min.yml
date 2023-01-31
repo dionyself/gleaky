@@ -1,0 +1,86 @@
+# Confidential & Proprietary.  Copyright 2019-2020 DigiWorth, Inc. All rights reserved.
+# Gleaky ONE: gleaky-stack
+
+version: "3"
+
+volumes:
+  global-gleaky-mininal:
+
+services:
+
+  gleaky-db:
+    image: ${GLEAKY_DB_IMAGE}
+    environment:
+      POSTGRES_DB: ${GLEAKY_DB_NAME}
+      POSTGRES_USER: ${GLEAKY_DB_USER}
+      POSTGRES_PASSWORD: ${GLEAKY_DB_PWD}
+      PGDATA: ${PGDATA}
+    ports:
+      - "${GLEAKY_DB_PORT}:5432"
+    volumes:
+      -  "global-gleaky-mininal:${PGDATA}" 
+  
+  gleaky-index:
+    image: ${GLEAKY_INDEX_IMAGE}
+    environment:
+      - discovery.type=${GLEAKY_INDEX_DISCOVERY_TYPE}
+    ports:
+      - "${GLEAKY_INDEX_REST_PORT}:9200"
+      - "${GLEAKY_INDEX_NODE_PORT}:9300"
+
+  gleaky-broker:
+    image: ${GLEAKY_BROKER_IMAGE}
+    ports:
+      - "${GLEAKY_BROKER_PORT}:6379"
+
+  gleaky-reporter:
+    image: ${GLEAKY_REPORTER_IMAGE}
+    environment:
+      GLEAKY_REPORTER_HOST: ${GLEAKY_REPORTER_HOST}
+      GLEAKY_DB_HOST: ${GLEAKY_DB_HOST}
+      GLEAKY_DB_NAME: ${GLEAKY_DB_NAME}
+      GLEAKY_DB_PORT: ${GLEAKY_DB_PORT}
+      GLEAKY_DB_USER: ${GLEAKY_DB_USER}
+      GLEAKY_DB_PWD: ${GLEAKY_DB_PWD}
+      GLEAKY_REPORTER_DEBUG: ${GLEAKY_REPORTER_DEBUG}
+    build:
+      context: ./gleaky_reporter/
+      dockerfile: ./gleaky_reporter/Dockerfile
+    ports:
+      - "80:8000"
+    volumes:
+      - "./gleaky_reporter/:/app"
+
+  gleaky-middleware:
+    image: ${GLEAKY_MIDDLEWARE_IMAGE}
+    environment:
+      GLEAKY_REPORTER_WS_URI: ${GLEAKY_REPORTER_WS_URI}
+      GLEAKY_REPORTER_USER: ${GLEAKY_REPORTER_USER}
+      GLEAKY_REPORTER_PWD: ${GLEAKY_REPORTER_PWD}
+      GLEAKY_MIDDLEWARE_HOST: ${GLEAKY_MIDDLEWARE_HOST}
+      GLEAKY_MIDDLEWARE_WS_USER: ${GLEAKY_MIDDLEWARE_WS_USER}
+      GLEAKY_MIDDLEWARE_WS_PASSWORD: ${GLEAKY_MIDDLEWARE_WS_PASSWORD}
+
+  gleaky-scanner:
+    image: ${GLEAKY_SCANNER_IMAGE}
+    environment:
+      GLEAKY_MIDDLEWARE_URI: ${GLEAKY_MIDDLEWARE_URI}
+      GLEAKY_MIDDLEWARE_WS_USER: ${GLEAKY_MIDDLEWARE_WS_USER}
+      GLEAKY_MIDDLEWARE_WS_PASSWORD: ${GLEAKY_MIDDLEWARE_WS_PWD}
+
+  gleaky-proxy:
+    image: ${GLEAKY_PROXY_IMAGE}
+    environment:
+      GLEAKY_REPORTER_HOST: ${GLEAKY_REPORTER_HOST}
+      GLEAKY_REPORTER_PORT: ${GLEAKY_REPORTER_PORT}
+      GLEAKY_MIDDLEWARE_HOST: ${GLEAKY_MIDDLEWARE_HOST}
+      GLEAKY_MIDDLEWARE_PORT: ${GLEAKY_MIDDLEWARE_PORT}
+    ports:
+      - ${GLEAKY_PROXY_REPORTER_SSL_EXTERNAL_PORT}:443/tcp
+      - ${GLEAKY_PROXY_REPORTER_HTTP_EXTERNAL_PORT}:80/tcp
+      - ${GLEAKY_PROXY_MIDDLEWARE_SSL_EXTERNAL_PORT}:444/tcp
+      - ${GLEAKY_PROXY_MIDDLEWARE_HTTP_EXTERNAL_PORT}:81/tcp
+    volumes: 
+      - /data/gleaky_proxy/certs:/etc/nginx/certs:ro
+      - /data/gleaky_proxy/nginx.conf.tpl:/tmp/nginx.conf.tpl:ro
+    command: /bin/bash -c "envsubst < /tmp/nginx.conf.tpl > /etc/nginx/nginx.conf && exec nginx -g 'daemon off;'"
