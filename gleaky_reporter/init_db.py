@@ -13,7 +13,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission, Group
 from django.contrib.contenttypes.models import ContentType
 from django.apps import apps
-from customers.models import CountryGrouping, Country
+from world.models import CountryGrouping, Country
 
 
 UserModel = get_user_model()
@@ -464,6 +464,6 @@ group_country_mapping = [
 #user2 = UserModel.objects.create_user(email="user2@gleaky.com", password="password", is_staff=False)
 #fqdn = provision_tenant("Test store1", "test1", "user1@gleaky.com", is_staff=False)
 #fqdn = provision_tenant("Test store2", "test2", "user2@gleaky.com", is_staff=False)
-#from customers.models import Store
+#from world.models import Store
 #tenant2 = Store.objects.filter(domain_url=fqdn).first()
 #tenant2.add_user(user1, is_superuser=False, is_staff=False)

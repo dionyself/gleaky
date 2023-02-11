@@ -1,12 +1,40 @@
 from django.db import models
-from django_tenants.models import TenantMixin, DomainMixin
+from django.contrib.postgres.fields import JSONField
+from django_tenants.models import DomainMixin
+from tenant_users.tenants.models import TenantBase
 from django_countries import ioc_data
 from django_countries.conf import settings
+from tenant_users.tenants.models import UserProfile
 
 
-class Country(TenantMixin):
-    name = models.CharField(max_length=100)
+class BaseModel(models.Model):
+    name = models.CharField(unique=True, max_length=100)
+    description = models.TextField(max_length=200)
+    properties = JSONField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    is_deleted = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=False)
+    is_disabled = models.BooleanField(default=False)
+    is_hidden = models.BooleanField(default=False)
+
+
+class TenantUser(UserProfile):
+    name = models.CharField(
+        max_length = 100,
+        blank = True,
+    )
+
+class Country(TenantBase):
+    name = models.CharField(unique=True, max_length=100)
+    description = models.TextField(max_length=200)
     paid_until = models.DateField()
+    description = models.TextField(max_length=200)
+    latitude = models.FloatField(null=True, blank=True)
+    longitude = models.FloatField(null=True, blank=True)
+    time_zone = models.CharField(max_length=100, null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    is_deleted = models.BooleanField(default=False)
     flag = models.CharField(max_length=512)
     flag_css = models.CharField(max_length=512)
     unicode_flag = models.CharField(max_length=512)
@@ -16,6 +44,7 @@ class Country(TenantMixin):
     on_trial = models.BooleanField()
     numeric_padded = models.CharField(max_length=3)
     created_on = models.DateField(auto_now_add=True)
+    properties = JSONField(null=True, blank=True)
     auto_create_schema = True
 
     @property
@@ -33,32 +62,14 @@ class Country(TenantMixin):
 
     @property
     def flag_css(self):
-        """
-        Output the css classes needed to display an HTML element as a flag
-        sprite.
-        Requires the use of 'flags/sprite.css' or 'flags/sprite-hq.css'.
-        Usage example::
-            <i class="{{ ctry.flag_css }}" aria-label="{{ ctry.code }}></i>
-        """
         if not self.code:
             return ""
         return "flag-sprite flag-{} flag-_{}".format(*self.code.lower())
 
     @property
     def unicode_flag(self):
-        """
-        Generate a unicode flag for the given country.
-        The logic for how these are determined can be found at:
-        https://en.wikipedia.org/wiki/Regional_Indicator_Symbol
-        Currently, these glyphs appear to only be supported on OS X and iOS.
-        """
         if not self.code:
             return ""
-
-        # Don't really like magic numbers, but this is the code point for [A]
-        # (Regional Indicator A), minus the code point for ASCII A. By adding
-        # this to the uppercase characters making up the ISO 3166-1 alpha-2
-        # codes we can get the flag.
         OFFSET = 127397
         points = [ord(x) + OFFSET for x in self.code.upper()]
         return chr(points[0]) + chr(points[1])
@@ -76,3 +87,45 @@ class Country(TenantMixin):
 
 class Domain(DomainMixin):
     pass
+
+class GeopoliticalBorder(BaseModel):
+    area_data = models.CharField(max_length=100)
+    countries = models.ManyToManyField(Country, null=True, blank=True)
+
+class GeopoliticalOrganization(BaseModel):
+    countries = models.ManyToManyField(Country, null=True, blank=True)
+
+class Product(BaseModel):
+    code = models.IntegerField(null=True, blank=True)
+    code_type = models.TextField()
+    existence_type = models.TextField()
+
+    class Meta:
+        unique_together = ("code", "code_type")
+
+class Conglomerate(BaseModel):
+    country = models.ForeignKey(Country)
+    related_corporation = models.ForeignKey("self", null=True)
+    phone = models.CharField(max_length=100)
+
+class Corporation(BaseModel):
+    country = models.ForeignKey(Country)
+    conglomerate = models.ForeignKey(Conglomerate, null=True, blank=True)
+    related_corporation = models.ForeignKey("self", null=True)
+    phone = models.CharField(max_length=100)
+
+class Review(BaseModel):
+    user = models.ForeignKey(TenantUser)
+    product = models.ForeignKey(Product)
+    title = models.TextField()
+    content = models.TextField()
+    comments = models.TextField()
+    stars = models.IntegerField()
+    likes = models.ManyToManyField(TenantUser, related_name="reviews_liked")
+    dislikes = models.ManyToManyField(TenantUser, related_name="reviews_disliked")
+
+class ReviewComment(BaseModel):
+    user = models.ForeignKey(TenantUser)
+    content = models.TextField(help_text="Comment content.")
+    likes = models.ManyToManyField(TenantUser, related_name="review_comments_liked")
+    dislikes = models.ManyToManyField(TenantUser, related_name="review_comments_disliked")

@@ -1,4 +1,5 @@
 #!/bin/bash
+
 export GLEAKY_REPORTER_HOST=${GLEAKY_REPORTER_HOST:="0.0.0.0"}
 export GLEAKY_REPORTER_PORT=${GLEAKY_REPORTER_PORT:="80"}
 export GLEAKY_REPORTER_INTERNAL_PORT=${GLEAKY_REPORTER_INTERNAL_PORT:="$GLEAKY_REPORTER_PORT"}
@@ -22,17 +23,19 @@ export GLEAKY_REPORTER_DATABASE_BACKUP_FOLDER=${GLEAKY_REPORTER_DATABASE_BACKUP_
 export PYTHONIOENCODING=utf-8
 export GLEAKY_REPORTER_BROKER_URL=${GLEAKY_REPORTER_BROKER_URL:="redis://localhost:6379"}
 export GLEAKY_REPORTER_INDEX_URL=${GLEAKY_REPORTER_INDEX_URL:="http://127.0.0.1:9200/"}
-#RC=1
-#while [ $RC -eq 1 ]
-#do
-#  echo 'Testing database connection...'
-#  python check_db.py
-#  RC=$?
-#done
+
+RC=1
+while [ $RC -eq 1 ]
+do
+  echo 'Testing database connection...'
+  python check_db.py
+  RC=$?
+done
+
 python manage.py makemigrations  --noinput
-python manage.py makemigrations customers --noinput
+python manage.py makemigrations world --noinput
 python manage.py makemigrations warehouses --noinput
-#python manage.py makemigrations --empty customers --noinput
+#python manage.py makemigrations --empty world --noinput
 python manage.py migrate_schemas
 python manage.py migrate_schemas --shared
 # python manage.py startapp <app_name>
@@ -41,6 +44,7 @@ if [ $GLEAKY_REPORTER_TESTS -eq "1" ]; then
     exit
 fi
 python init_db.py
+python manage.py createcachetable
 python manage.py rebuild_index
 celery -A gleaky worker --beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler --loglevel=info &
-daphne -t 600 -b $GLEAKY_REPORTER_INTERNAL_HOST -p $GLEAKY_REPORTER_INTERNAL_PORT tve_app.asgi:application
+daphne -t 600 -b $GLEAKY_REPORTER_INTERNAL_HOST -p $GLEAKY_REPORTER_INTERNAL_PORT gleaky_reporter.asgi:application
